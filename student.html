@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StudyFlow — Student</title>
+<style>
+:root{--a:#6d5dfc;--b:#8e7dff;--bg:#f7f8fc;--card:#fff;--text:#171923;--muted:#6b7280;--line:#e7e9f0;--good:#16803d}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--text)}
+.top{padding:23px 5vw;color:#fff;background:linear-gradient(135deg,var(--a),var(--b))}.wrap{max-width:1180px;margin:22px auto;padding:0 18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:0 9px 30px #28315c0b}.grid{display:grid;grid-template-columns:365px 1fr;gap:18px}
+.auth{max-width:460px;margin:52px auto}.hide{display:none}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.between{justify-content:space-between}.muted{font-size:13px;color:var(--muted)}
+input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);border-radius:12px;font:inherit;margin:6px 0 12px}textarea{min-height:130px;resize:vertical}
+button{border:0;border-radius:12px;padding:11px 14px;font-weight:850;cursor:pointer}.primary{background:var(--a);color:#fff}.soft{background:#efedff;color:#4839b1}.dark{background:#141622;color:#fff}.good{background:#dcfce7;color:#166534}.danger{background:#fee2e2;color:#991b1b}
+.status{min-height:20px;color:var(--muted);font-size:13px}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.kpi{border:1px solid var(--line);border-radius:15px;padding:13px}.kpi b{display:block;font-size:23px;margin-top:3px}
+.progress{height:11px;background:#eceef4;border-radius:99px;overflow:hidden}.progress>div{height:100%;background:var(--a);transition:.3s}
+.day{border:1px solid var(--line);border-radius:16px;padding:15px;margin-top:12px}.today{border:2px solid var(--a);background:#fcfbff}.daytitle{display:flex;justify-content:space-between;gap:10px}.task{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}.task:first-of-type{border-top:0}.task input{width:auto;margin:3px 0}.done{text-decoration:line-through;color:#8b90a0}.chip{display:inline-block;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:800;background:#f0effa;color:#5a51a9;margin-left:5px}
+.code{font-size:29px;font-weight:900;letter-spacing:5px;text-align:center;background:#f0eeff;border-radius:14px;padding:12px}.heroMsg{background:#f8f7ff;border:1px solid #ebe9fb;padding:12px;border-radius:14px;margin-bottom:12px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:930px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:1fr 1fr}}
+@media print{.noPrint,.formOnly,.authOnly{display:none!important}.card{box-shadow:none;border:0}.day{break-inside:avoid}}
+</style>
+</head>
+<body>
+<header class="top"><div class="row between"><div><h1 style="margin:0">📚 StudyFlow</h1><div id="hello">Student</div></div><div class="row noPrint"><a href="index.html" style="color:#fff;text-decoration:none">Home</a><button class="dark" id="logout">Log out</button></div></div></header>
+<div class="wrap">
+<section id="auth" class="card auth"><h2>Student Login</h2><p class="muted">Your session is remembered on this browser.</p><input id="name" placeholder="Your name"><input id="email" type="email" placeholder="Email"><input id="password" type="password" placeholder="Password (6+ characters)"><div class="row"><button class="primary" id="signup">Create account</button><button class="soft" id="signin">Log in</button></div><p id="authMsg" class="status"></p></section>
+
+<section id="app" class="hide"><div class="grid">
+<aside>
+<div class="card formOnly">
+<h2 style="margin-top:0">Create your plan</h2>
+<label>Student name</label><input id="studentName">
+<label>Exam date <span class="muted">(optional)</span></label><input id="examDate" type="date">
+<label>Start date</label><input id="startDate" type="date">
+<label>Study days</label><input id="days" type="number" min="1" max="90" value="7">
+<label>Hours per day</label><input id="hours" type="number" min=".5" max="12" step=".5" value="2">
+<label>Difficulty mix</label><select id="difficulty"><option value="mixed">Mixed</option><option value="easy">Mostly Easy</option><option value="hard">Mostly Difficult</option></select>
+<label>Weak topics / priorities</label><input id="weak" placeholder="e.g. Algebra, Physics numericals">
+<label>Days to avoid</label><input id="avoid" placeholder="e.g. Sundays, 20 Sep">
+<label>Portions</label>
+<textarea id="portions" placeholder="Maths - Algebra, Geometry, Trigonometry
+Science - Light, Motion, Acids & Bases
+English - Grammar, Prose, Writing Skills"></textarea>
+<div class="actions"><button class="primary" id="makePlan">✨ Build Smart AI Plan</button><button class="soft" id="sample">Sample</button></div>
+<p id="aiStatus" class="status"></p>
+</div>
+
+<div class="card noPrint" style="margin-top:18px">
+<h2 style="margin-top:0">👨‍👩‍👧 Parent connection</h2><p class="muted">Give this one-time code to your parent.</p>
+<div class="code" id="pairCode">------</div><p id="pairStatus" class="muted">Expires in 30 minutes.</p><button class="soft" id="newCode">Generate code</button>
+</div>
+</aside>
+
+<main>
+<div class="card">
+<div class="row between"><div><h2 style="margin:0">My Study Plan</h2><div class="muted" id="meta"></div></div>
+<div class="actions noPrint"><button class="good" id="todayDone">✓ Today's Work Done</button><button class="soft" id="print">🖨 Print / Save PDF</button><button class="soft" id="download">⬇ Download CSV</button></div></div>
+<div id="aiPlanNote" class="heroMsg" style="display:none"></div>
+<div class="kpis"><div class="kpi">Progress<b id="pct">0%</b></div><div class="kpi">Completed<b id="done">0</b></div><div class="kpi">Remaining<b id="remaining">0</b></div><div class="kpi">Study days<b id="count">0</b></div></div>
+<div style="margin:15px 0 5px">Overall progress</div><div class="progress"><div id="bar" style="width:0"></div></div>
+<div id="plan"></div>
+</div>
+</main></div></section></div>
+
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,updateProfile,setPersistence,browserLocalPersistence} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getFirestore,doc,setDoc,getDoc,onSnapshot,serverTimestamp,Timestamp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import {getAI,getGenerativeModel,GoogleAIBackend,Schema} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-ai.js";
+import {firebaseConfig} from "./firebase-config.js";
+
+const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);await setPersistence(auth,browserLocalPersistence);
+const $=x=>document.getElementById(x);let user=null,data=null,unsub=null;
+const today=()=>{let d=new Date();return new Date(d-d.getTimezoneOffset()*60000).toISOString().slice(0,10)}
+$("startDate").value=today();
+
+function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function parsePortions(raw){return raw.split(/\n+/).map(s=>s.trim()).filter(Boolean).flatMap(line=>{const a=line.split(/\s*-\s*/),subject=a.length>1?a[0].trim():"General",names=(a.length>1?a.slice(1).join(" - "):line).split(/,\s*|;\s*/).map(s=>s.trim()).filter(Boolean);return names.map(name=>({subject,name}))})}
+function makeDays(n,start){const p=[];for(let i=0;i<n;i++){let d=new Date(start+"T00:00:00");d.setDate(d.getDate()+i);p.push({day:i+1,date:d.toISOString().slice(0,10),tasks:[]})}return p}
+function backupPlan(items,n,start,hours){const p=makeDays(n,start);const capacity=Math.max(2,Math.floor(hours*60/35));items.forEach((x,i)=>p[Math.floor(i/capacity)%n].tasks.push({id:crypto.randomUUID(),subject:x.subject,name:x.name,minutes:Math.min(60,Math.max(25,Math.round(hours*60/capacity))),type:"Study",priority:"Normal",done:false}));for(let i=Math.max(0,n-2);i<n;i++)p[i].tasks.push({id:crypto.randomUUID(),subject:"Revision",name:"Review difficult topics + self-test",minutes:45,type:i===n-1?"Test":"Revision",priority:"High",done:false});return p}
+async function save(){data.updatedAt=serverTimestamp();await setDoc(doc(db,"plans",user.uid),data,{merge:true})}
+
+function render(){
+ if(!data)return;
+ const all=(data.plan||[]).flatMap(d=>d.tasks||[]),done=all.filter(t=>t.done).length,p=all.length?Math.round(done/all.length*100):0;
+ $("pct").textContent=p+"%";$("done").textContent=done;$("remaining").textContent=all.length-done;$("count").textContent=data.plan?.length||0;$("bar").style.width=p+"%";
+ $("studentName").value=data.student||user.displayName||"Student";$("examDate").value=data.examDate||"";$("startDate").value=data.startDate||today();$("days").value=data.days||7;$("hours").value=data.hours||2;$("difficulty").value=data.difficulty||"mixed";$("weak").value=data.weak||"";$("avoid").value=data.avoid||"";$("portions").value=data.portionText||"";
+ $("meta").textContent=`${data.days||0} days • ${data.hours||0}h/day${data.examDate?" • Exam "+data.examDate:""}`;
+ $("aiPlanNote").style.display=data.aiSummary?"block":"none";$("aiPlanNote").textContent=data.aiSummary||"";
+ $("plan").innerHTML=(data.plan||[]).map((d,di)=>`<div class="day ${d.date===today()?"today":""}"><div class="daytitle"><b>${d.date===today()?"⭐ TODAY • ":""}Day ${d.day} <span class="muted">${esc(d.date)}</span></b><span class="muted">${d.tasks.filter(t=>t.done).length}/${d.tasks.length}</span></div>
+ ${d.tasks.map(t=>`<label class="task"><input type="checkbox" data-d="${di}" data-id="${t.id}" ${t.done?"checked":""}><span class="${t.done?"done":""}"><b>${esc(t.subject)}</b> — ${esc(t.name)} <span class="chip">${esc(t.type||"Study")} • ${t.minutes||30}m</span></span></label>`).join("")}</div>`).join("")}
+}
+
+$("signup").onclick=async()=>{try{const c=await createUserWithEmailAndPassword(auth,$("email").value.trim(),$("password").value);await updateProfile(c.user,{displayName:$("name").value.trim()||"Student"});await setDoc(doc(db,"users",c.user.uid),{uid:c.user.uid,role:"student",name:c.user.displayName,email:c.user.email,createdAt:serverTimestamp()});$("authMsg").textContent="Account created ✓"}catch(e){$("authMsg").textContent=e.message}};
+$("signin").onclick=async()=>{try{await signInWithEmailAndPassword(auth,$("email").value.trim(),$("password").value);$("authMsg").textContent=""}catch(e){$("authMsg").textContent=e.message}};
+$("logout").onclick=()=>signOut(auth);
+$("sample").onclick=()=>{$("studentName").value=user?.displayName||"Student";$("days").value=10;$("hours").value=2;$("weak").value="Algebra, Physics numericals";$("avoid").value="Sunday";$("portions").value=`Maths - Algebra, Geometry, Trigonometry, Mensuration
+Science - Light, Motion, Acids & Bases, Electricity
+English - Grammar, Prose, Writing Skills
+Social Science - History Chapter 1, Geography Chapter 2`};
+
+const schema=Schema.object({properties:{
+ summary:Schema.string(),tasks:Schema.array({items:Schema.object({properties:{
+ day:Schema.number(),subject:Schema.string(),title:Schema.string(),minutes:Schema.number(),type:Schema.string(),priority:Schema.string()
+ }})})
+}});
+
+$("makePlan").onclick=async()=>{
+ const items=parsePortions($("portions").value),n=Math.max(1,Math.min(90,+$("days").value||7)),start=$("startDate").value||today(),hours=+$("hours").value||2;
+ if(!items.length){$("aiStatus").textContent="Please enter your portions first.";return}
+ $("makePlan").disabled=true;$("aiStatus").textContent="🤖 Gemini is planning your schedule...";
+ try{
+  const ai=getAI(app,{backend:new GoogleAIBackend()}),model=getGenerativeModel(ai,{model:"gemini-3.8-flash",systemInstruction:"You are StudyFlow, an expert school study planner. Build realistic, balanced schedules. Never omit a supplied portion. Prioritize weak topics. Respect daily hours and avoid dates. Use revision and tests near the exam. Return only the requested structured JSON."});
+  const prompt=`Student: ${$("studentName").value||user.displayName||"Student"}.
+Start: ${start}. Days: ${n}. Hours/day: ${hours}. Exam date: ${$("examDate").value||"not provided"}.
+Difficulty preference: ${$("difficulty").value}. Weak/priorities: ${$("weak").value||"none"}.
+Days to avoid: ${$("avoid").value||"none"}.
+Portions (${items.length}): ${items.map((x,i)=>`${i+1}. ${x.subject} — ${x.name}`).join("; ")}.
+Rules: fit within daily minutes, mix subjects, schedule learning before revision, add at least one revision/test block when practical, put higher priority on weak topics, never invent chapters, and cover every listed portion. Day numbers must be between 1 and ${n}.`;
+  const result=await model.generateContent({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",responseSchema:schema}});
+  const out=JSON.parse(result.response.text()),p=makeDays(n,start),allNames=new Set();
+  for(const t of (out.tasks||[])){const i=Math.max(1,Math.min(n,Math.round(t.day)))-1;allNames.add(String(t.title).toLowerCase());p[i].tasks.push({id:crypto.randomUUID(),subject:t.subject,name:t.title,minutes:Math.max(15,Math.round(t.minutes||30)),type:t.type||"Study",priority:t.priority||"Normal",done:false})}
+  items.forEach((x,i)=>{if(!allNames.has(x.name.toLowerCase()))p[i%n].tasks.push({id:crypto.randomUUID(),subject:x.subject,name:x.name,minutes:30,type:"Study",priority:"Normal",done:false})});
+  data={student:$("studentName").value.trim()||user.displayName||"Student",examDate:$("examDate").value||"",startDate:start,days:n,hours,difficulty:$("difficulty").value,weak:$("weak").value,avoid:$("avoid").value,portionText:$("portions").value,plan:p,aiSummary:out.summary||"Gemini created a personalised plan. Complete tasks daily and StudyFlow will keep progress synced.",aiModel:"gemini-3.8-flash"};
+  await save();render();$("aiStatus").textContent="✅ Smart Gemini plan saved to Firebase.";
+ }catch(e){
+  console.error(e);const p=backupPlan(items,n,start,hours);
+  data={student:$("studentName").value.trim()||user.displayName||"Student",examDate:$("examDate").value||"",startDate:start,days:n,hours,difficulty:$("difficulty").value,weak:$("weak").value,avoid:$("avoid").value,portionText:$("portions").value,plan:p,aiSummary:"Gemini is not active yet, so StudyFlow created a safe backup schedule. After Firebase AI Logic is enabled, press Build Smart AI Plan again.",aiModel:"fallback"};
+  await save();render();$("aiStatus").textContent="⚠️ AI not active yet — backup plan created. See Firebase AI Logic setup.";
+ }finally{$("makePlan").disabled=false}
+};
+
+$("plan").addEventListener("change",async e=>{if(!e.target.matches("input[type=checkbox]"))return;const d=+e.target.dataset.d,id=e.target.dataset.id,t=data.plan[d].tasks.find(x=>x.id===id);if(t)t.done=e.target.checked;await save();render()});
+$("todayDone").onclick=async()=>{const d=data?.plan?.find(x=>x.date===today());if(!d){alert("There is no scheduled work today.");return}d.tasks.forEach(t=>t.done=true);await save();render()};
+$("print").onclick=()=>window.print();
+$("download").onclick=()=>{const rows=[["Day","Date","Subject","Task","Minutes","Type","Priority","Done"]];(data.plan||[]).forEach(d=>d.tasks.forEach(t=>rows.push([d.day,d.date,t.subject,t.name,t.minutes,t.type,t.priority,t.done?"Yes":"No"])));const escCsv=v=>`"${String(v??"").replaceAll('"','""')}"`;const csv=rows.map(r=>r.map(escCsv).join(",")).join("\\n"),a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));a.download="StudyFlow-Plan.csv";a.click()};
+$("newCode").onclick=async()=>{const c=String(Math.floor(100000+Math.random()*900000)),expires=new Date(Date.now()+1800000);await setDoc(doc(db,"pairingCodes",c),{studentUid:user.uid,expiresAt:Timestamp.fromDate(expires),claimedBy:null});$("pairCode").textContent=c;$("pairStatus").textContent="Expires in 30 minutes. Give this code to your parent."};
+
+onAuthStateChanged(auth,async u=>{if(!u){$("auth").classList.remove("hide");$("app").classList.add("hide");return}user=u;$("auth").classList.add("hide");$("app").classList.remove("hide");$("hello").textContent=`Welcome, ${u.displayName||"Student"}`;const s=await getDoc(doc(db,"plans",u.uid));if(s.exists()){data=s.data();render()}unsub?.();unsub=onSnapshot(doc(db,"plans",u.uid),s=>{if(s.exists()){data=s.data();render()}})});
+</script></body></html>

@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StudyFlow — Student</title>
+<style>
+:root{--a:#6d5dfc;--b:#8e7dff;--bg:#f7f7fb;--card:#fff;--text:#171923;--muted:#6b7280;--line:#e7e9f0}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--text)}
+header{background:linear-gradient(135deg,var(--a),var(--b));color:#fff;padding:28px 5vw}
+header h1{margin:0 0 5px}.wrap{max-width:1100px;margin:22px auto;padding:0 18px}
+.grid{display:grid;grid-template-columns:330px 1fr;gap:18px}.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:0 8px 30px rgba(30,30,70,.05)}
+input,textarea{width:100%;padding:11px;border:1px solid var(--line);border-radius:12px;margin:6px 0 12px;font:inherit}textarea{min-height:145px}
+button{border:0;border-radius:12px;padding:11px 15px;font-weight:800;cursor:pointer}.primary{background:var(--a);color:#fff}.secondary{background:#eeecff;color:#473cb0}.danger{background:#fee2e2;color:#991b1b}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.muted{color:var(--muted);font-size:13px}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.kpi{border:1px solid var(--line);padding:14px;border-radius:15px}.kpi b{display:block;font-size:23px;margin-top:3px}
+.progress{height:10px;background:#eceef4;border-radius:99px;overflow:hidden}.progress>div{height:100%;background:var(--a)}
+.day{border:1px solid var(--line);border-radius:15px;margin-top:12px;padding:14px}.dayh{display:flex;justify-content:space-between}.task{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--line)}.task:first-child{border-top:0}.task input{width:auto;margin:4px 0 0}.done{text-decoration:line-through;color:var(--muted)}
+#app{display:none}.auth{max-width:460px;margin:60px auto}.hide{display:none}.code{font-size:28px;font-weight:900;letter-spacing:5px;background:#f1efff;padding:12px;border-radius:12px;text-align:center}
+@media(max-width:820px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<header><h1>📚 StudyFlow</h1><div id="hello">Your AI study planner</div></header>
+
+<div class="wrap">
+  <section id="auth" class="card auth">
+    <h2 id="authTitle">Student login</h2>
+    <p class="muted">Your session stays signed in on this browser until you sign out.</p>
+    <input id="name" placeholder="Your name">
+    <input id="email" type="email" placeholder="Email">
+    <input id="password" type="password" placeholder="Password (6+ characters)">
+    <div class="row">
+      <button class="primary" id="loginBtn">Log in</button>
+      <button class="secondary" id="signupBtn">Create account</button>
+    </div>
+    <p id="authMsg" class="muted"></p>
+  </section>
+
+  <section id="app">
+    <div class="grid">
+      <div>
+        <div class="card">
+          <div class="row" style="justify-content:space-between">
+            <h2 style="margin:0">Create / edit</h2><button class="danger" id="logoutBtn">Log out</button>
+          </div>
+          <label>Student name</label><input id="studentName" placeholder="Your name">
+          <label>Target date</label><input id="targetDate" type="date">
+          <label>Study days</label><input id="days" type="number" min="1" max="120" value="7">
+          <label>Available study time per day</label><input id="hours" type="number" min="0.5" step="0.5" value="2">
+          <label>Portions</label>
+          <textarea id="portions" placeholder="Maths - Algebra, Geometry, Trigonometry
+Science - Light, Motion, Acids & Bases
+English - Grammar, Prose, Writing Skills"></textarea>
+          <label>Theme</label>
+          <div class="row">
+            <button class="secondary" onclick="theme('#6d5dfc','#8e7dff')">Purple</button>
+            <button class="secondary" onclick="theme('#0f766e','#14b8a6')">Teal</button>
+            <button class="secondary" onclick="theme('#ea580c','#f59e0b')">Sunset</button>
+            <button class="secondary" onclick="theme('#2563eb','#60a5fa')">Blue</button>
+          </div>
+          <div class="row" style="margin-top:12px">
+            <button class="primary" id="generate">✨ Generate plan</button>
+            <button class="secondary" id="sample">Sample</button>
+          </div>
+          <p id="saveMsg" class="muted"></p>
+        </div>
+
+        <div class="card" style="margin-top:18px">
+          <h2>👨‍👩‍👧 Parent connection</h2>
+          <p class="muted">Generate a temporary 6-digit code and give it to your parent. They enter it in the Parent App to connect to your progress.</p>
+          <div class="code" id="pairCode">------</div>
+          <p class="muted" id="pairExpiry">Code not generated</p>
+          <button class="secondary" id="newCode">Generate new parent code</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0">My plan</h2>
+        <div class="kpis">
+          <div class="kpi">Progress<b id="pct">0%</b></div>
+          <div class="kpi">Completed<b id="done">0</b></div>
+          <div class="kpi">Total<b id="total">0</b></div>
+        </div>
+        <div style="margin:15px 0 5px">Overall progress</div>
+        <div class="progress"><div id="bar" style="width:0"></div></div>
+        <div id="planList" style="margin-top:14px"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, collection, query, where, getDocs, onSnapshot, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { firebaseConfig } from "./firebase-config.js";
+
+const app=initializeApp(firebaseConfig), auth=getAuth(app), db=getFirestore(app);
+await setPersistence(auth,browserLocalPersistence);
+
+const $=id=>document.getElementById(id);
+let current=null, unsub=null, data=null;
+
+function msg(t){$("authMsg").textContent=t}
+function theme(a,b){document.documentElement.style.setProperty("--a",a);document.documentElement.style.setProperty("--b",b); if(data){data.theme={a,b}; savePlan(false)}}
+function parse(raw){
+  return raw.split(/\n+/).map(s=>s.trim()).filter(Boolean).flatMap(line=>{
+    const x=line.split(/\s*-\s*/), subject=x.length>1?x[0].trim():"General";
+    const vals=(x.length>1?x.slice(1).join(" - "):line).split(/,\s*|;\s*/).map(s=>s.trim()).filter(Boolean);
+    return vals.map(name=>({subject,name}));
+  });
+}
+function buildPlan(items,days,hours){
+  const p=Array.from({length:days},(_,i)=>({day:i+1,tasks:[]}));
+  items.forEach((item,i)=>p[i%days].tasks.push({id:crypto.randomUUID(),subject:item.subject,name:item.name,done:false}));
+  if(days>2)p[days-1].tasks.push({id:crypto.randomUUID(),subject:"Revision",name:`Revision block (${hours}h): formulas, definitions and difficult topics`,done:false});
+  return p;
+}
+async function savePlan(show=true){
+  if(!current||!data)return;
+  data.updatedAt=serverTimestamp();
+  await setDoc(doc(db,"plans",current.uid),data,{merge:true});
+  if(show)$("saveMsg").textContent="Saved to Firebase ✓";
+}
+function render(){
+  if(!data)return;
+  if(data.theme)theme(data.theme.a,data.theme.b);
+  $("studentName").value=data.student||current.displayName||"";
+  $("targetDate").value=data.targetDate||"";
+  $("days").value=data.days||7;
+  $("hours").value=data.hours||2;
+  $("portions").value=(data.portionText||"");
+  const all=(data.plan||[]).flatMap(x=>x.tasks||[]), done=all.filter(x=>x.done).length, pct=all.length?Math.round(done/all.length*100):0;
+  $("pct").textContent=pct+"%";$("done").textContent=done;$("total").textContent=all.length;$("bar").style.width=pct+"%";
+  $("planList").innerHTML=(data.plan||[]).map((d,di)=>`
+    <div class="day"><div class="dayh"><b>Day ${d.day}</b><span class="muted">${d.tasks.filter(x=>x.done).length}/${d.tasks.length}</span></div>
+    ${d.tasks.map(t=>`<label class="task"><input type="checkbox" ${t.done?"checked":""} data-di="${di}" data-id="${t.id}"><span class="${t.done?"done":""}"><b>${esc(t.subject)}</b> — ${esc(t.name)}</span></label>`).join("")}</div>`).join("");
+}
+function esc(s){return String(s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));}
+
+$("signupBtn").onclick=async()=>{
+  try{
+    const cred=await createUserWithEmailAndPassword(auth,$("email").value.trim(),$("password").value);
+    await updateProfile(cred.user,{displayName:$("name").value.trim()||"Student"});
+    await setDoc(doc(db,"users",cred.user.uid),{uid:cred.user.uid,role:"student",name:cred.user.displayName||"Student",email:cred.user.email,createdAt:serverTimestamp()});
+    msg("Account created.");
+  }catch(e){msg(e.message)}
+};
+$("loginBtn").onclick=async()=>{try{await signInWithEmailAndPassword(auth,$("email").value.trim(),$("password").value)}catch(e){msg(e.message)}};
+$("logoutBtn").onclick=()=>signOut(auth);
+$("sample").onclick=()=>{$("studentName").value=current?.displayName||"Student";$("days").value=7;$("hours").value=2;$("portions").value=`Maths - Algebra, Geometry, Trigonometry
+Science - Light, Motion, Acids & Bases
+English - Grammar, Prose, Writing Skills
+Social Science - History Chapter 1, Geography Chapter 2`;};
+$("generate").onclick=async()=>{
+  const items=parse($("portions").value);if(!items.length){alert("Enter portions first.");return}
+  data={student:$("studentName").value.trim()||current.displayName||"Student",targetDate:$("targetDate").value||"",days:+$("days").value||7,hours:+$("hours").value||2,portionText:$("portions").value,plan:buildPlan(items,+$("days").value||7,+$("hours").value||2),theme:data?.theme||{a:"#6d5dfc",b:"#8e7dff"}};
+  await savePlan();render();
+};
+$("planList").addEventListener("change",async(e)=>{
+  if(!e.target.matches("input[type=checkbox]"))return;
+  const di=+e.target.dataset.di,id=e.target.dataset.id;
+  const t=data.plan[di].tasks.find(x=>x.id===id);if(t)t.done=e.target.checked;
+  await savePlan(false);render();
+});
+$("newCode").onclick=async()=>{
+  const code=String(Math.floor(100000+Math.random()*900000));
+  const expires=new Date(Date.now()+30*60*1000);
+  await setDoc(doc(db,"pairingCodes",code),{studentUid:current.uid,expiresAt:Timestamp.fromDate(expires)});
+  $("pairCode").textContent=code;$("pairExpiry").textContent="Expires in 30 minutes";
+};
+
+onAuthStateChanged(auth,async user=>{
+  if(!user){$("auth").style.display="block";$("app").style.display="none";return}
+  current=user;$("auth").style.display="none";$("app").style.display="block";$("hello").textContent=`Welcome, ${user.displayName||"Student"}`;
+  const snap=await getDoc(doc(db,"plans",user.uid));
+  if(snap.exists()){data=snap.data();render();}
+  unsub?.();unsub=onSnapshot(doc(db,"plans",user.uid),s=>{if(s.exists()){data=s.data();render();}});
+});
+</script>
+</body>
+</html>

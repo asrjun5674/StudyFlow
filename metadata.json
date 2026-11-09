@@ -1,0 +1,6 @@
+{
+  "name": "StudyFlow AI",
+  "description": "Intelligent AI study companion featuring real-time Live voice conversations, multi-turn AI tutoring with persona roles, high thinking STEM problem solver, and visual document analysis.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

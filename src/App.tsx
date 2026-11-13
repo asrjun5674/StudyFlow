@@ -1,10 +1,11 @@
 /**
+ * Copyright (c) 2026 StudyFlow. All rights reserved.
  * StudyFlow - Complete Student Productivity & Learning Ecosystem
  * Brand: StudyFlow | PLAN | LEARN | GROW
  * AI Companion: StudyFlowz (powered by Google Gemini)
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   NavigationSection,
   PlannerTask,
@@ -14,12 +15,32 @@ import {
   MoodLog,
   FocusRecord,
   StudentProfile,
+  PlanTier,
+  ParentContactConfig,
+  UpiPaymentReceipt,
+  ParentReportRecord,
+  LocalAuthUser,
 } from './types';
 import { StorageManager } from './utils/storage';
 import { ThemeProvider, useTheme } from './utils/themeContext';
 import { Sidebar } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
 import { StudyFlowLogo } from './components/StudyFlowLogo';
+import { LessonQuizModal } from './components/LessonQuizModal';
+import { AlarmRingingModal } from './components/AlarmRingingModal';
+import { AuthModal } from './components/AuthModal';
+import { alarmAudio } from './utils/alarmAudio';
+import {
+  auth,
+  ensureVerifiedUserProfileInCloud,
+  loadCloudUserState,
+  logoutFirebaseUser,
+  recordParentReportInCloud,
+  recordUpiPaymentInCloud,
+  resendVerificationEmail,
+  updatePlanTierInCloud,
+} from './utils/firebase';
+import { onAuthStateChanged, User } from 'firebase/auth';
 
 // Views
 import { HomeDashboard } from './views/HomeDashboard';
@@ -33,11 +54,11 @@ import { StudyToolsView } from './views/StudyToolsView';
 import { SmartAlarmsView } from './views/SmartAlarmsView';
 import { WellbeingView } from './views/WellbeingView';
 import { ProgressView } from './views/ProgressView';
+import { ProUpgradeView } from './views/ProUpgradeView';
 import { SettingsView } from './views/SettingsView';
-import { PresentationModeView } from './views/PresentationModeView';
 
 function StudyFlowInner() {
-  const { themeConfig, wallpaper } = useTheme();
+  const { themeConfig, wallpaper, isDark } = useTheme();
 
   // Navigation state
   const [currentSection, setCurrentSection] = useState<NavigationSection>(() => {
@@ -56,8 +77,8 @@ function StudyFlowInner() {
         'alarms',
         'wellbeing',
         'progress',
+        'pro',
         'settings',
-        'presentation',
       ];
       if (sec && validSections.includes(sec)) {
         return sec;
@@ -76,6 +97,169 @@ function StudyFlowInner() {
   const [moods, setMoods] = useState<MoodLog[]>(() => StorageManager.getMoods());
   const [focusRecords, setFocusRecords] = useState<FocusRecord[]>(() => StorageManager.getFocusRecords());
   const [profile, setProfile] = useState<StudentProfile>(() => StorageManager.getProfile());
+
+  // Pro Plans, UPI & Parent Connect Plugins state
+  const [planTier, setPlanTier] = useState<PlanTier>(() => StorageManager.getPlanTier());
+  const [parentContact, setParentContact] = useState<ParentContactConfig>(() =>
+    StorageManager.getParentContact()
+  );
+  const [upiReceipts, setUpiReceipts] = useState<UpiPaymentReceipt[]>(() =>
+    StorageManager.getUpiReceipts()
+  );
+  const [parentReports, setParentReports] = useState<ParentReportRecord[]>(() =>
+    StorageManager.getParentReports()
+  );
+
+  // Firebase Authentication & Local Username/Password Session State
+  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [localAuthUser, setLocalAuthUser] = useState<LocalAuthUser | null>(() =>
+    StorageManager.getLocalAuthSession()
+  );
+  const [authResolved, setAuthResolved] = useState(false);
+  const [guestMode, setGuestMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('autostart') === '1' || params.has('section')) {
+        return true;
+      }
+    }
+    return StorageManager.getGuestMode();
+  });
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+
+  const isSignedIn = Boolean(firebaseUser || localAuthUser);
+  const authUserLabel =
+    firebaseUser?.displayName ||
+    firebaseUser?.email?.split('@')[0] ||
+    localAuthUser?.displayName ||
+    localAuthUser?.username ||
+    null;
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      setFirebaseUser(user);
+      setAuthResolved(true);
+      if (user) {
+        setShowAuthModal(false);
+        const providerId = user.providerData[0]?.providerId;
+        const method: 'google' | 'password' = providerId === 'google.com' ? 'google' : 'password';
+        if (user.emailVerified) {
+          try {
+            await ensureVerifiedUserProfileInCloud({
+              user,
+              profile: StorageManager.getProfile(),
+              planTier: StorageManager.getPlanTier(),
+              username: user.displayName || user.email?.split('@')[0] || 'student',
+              authMethod: method,
+              parentContact: StorageManager.getParentContact(),
+            });
+            const cloud = await loadCloudUserState(user);
+            if (cloud) {
+              // Preserve free Pro Ultra access; never downgrade 'pro_ultra' back to 'free'
+              if (cloud.planTier === 'pro_ultra') {
+                setPlanTier('pro_ultra');
+                StorageManager.setPlanTier('pro_ultra');
+              }
+              if (cloud.parentContact) {
+                setParentContact(cloud.parentContact);
+                StorageManager.setParentContact(cloud.parentContact);
+              }
+              if (cloud.profilePatch) {
+                const merged = { ...StorageManager.getProfile(), ...cloud.profilePatch };
+                setProfile(merged);
+                StorageManager.saveProfile(merged);
+              }
+              if (cloud.payments && cloud.payments.length > 0) {
+                setUpiReceipts(cloud.payments);
+                StorageManager.setUpiReceipts(cloud.payments);
+              }
+            }
+          } catch (err) {
+            console.warn('Cloud state sync deferred:', err);
+          }
+        }
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Show welcome Sign-In modal on fresh first visit unless user signed in or chose guest/autostart
+  useEffect(() => {
+    if (authResolved && !firebaseUser && !localAuthUser && !guestMode) {
+      setShowAuthModal(true);
+    }
+  }, [authResolved, firebaseUser, localAuthUser, guestMode]);
+
+  // Interactive Lesson Recall Quiz State (triggers when clicking finished on a lesson/task)
+  const [activeQuizTask, setActiveQuizTask] = useState<PlannerTask | null>(null);
+
+  // Active Alarm Ringing state & monitor
+  const [ringingAlarm, setRingingAlarm] = useState<SmartAlarm | null>(null);
+  const lastRungMinuteRef = useRef<string>('');
+
+  // Global background alarm checker - fires chime & modal when clock hits scheduled time
+  useEffect(() => {
+    const checkAlarms = () => {
+      const now = new Date();
+      const currentHour = now.getHours().toString().padStart(2, '0');
+      const currentMinute = now.getMinutes().toString().padStart(2, '0');
+      const currentTimeStr = `${currentHour}:${currentMinute}`;
+
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const currentDay = dayNames[now.getDay()];
+      const minuteKey = `${now.toDateString()}-${currentTimeStr}`;
+
+      if (lastRungMinuteRef.current === minuteKey) {
+        return; // Already triggered in this minute
+      }
+
+      const activeMatch = alarms.find(
+        (a) => a.enabled && a.time === currentTimeStr && a.days.includes(currentDay)
+      );
+
+      if (activeMatch) {
+        lastRungMinuteRef.current = minuteKey;
+        setRingingAlarm(activeMatch);
+        alarmAudio.startRingingLoop();
+
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          try {
+            new Notification(`StudyFlow Reminder: ${activeMatch.title}`, {
+              body: activeMatch.label || 'Time for your scheduled study routine!',
+            });
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+    };
+
+    const interval = setInterval(checkAlarms, 2500);
+    return () => clearInterval(interval);
+  }, [alarms]);
+
+  const handleDismissAlarm = () => {
+    alarmAudio.stopRingingLoop();
+    setRingingAlarm(null);
+  };
+
+  const handleSnoozeAlarm = (minutes: number) => {
+    alarmAudio.stopRingingLoop();
+    const toSnooze = ringingAlarm;
+    setRingingAlarm(null);
+    if (toSnooze) {
+      setTimeout(() => {
+        setRingingAlarm(toSnooze);
+        alarmAudio.startRingingLoop();
+      }, minutes * 60 * 1000);
+    }
+  };
+
+  const handleAlarmStartFocus = () => {
+    alarmAudio.stopRingingLoop();
+    setRingingAlarm(null);
+    handleNavigate('focus');
+  };
 
   // Function to reload all data from storage (after reset or import)
   const reloadAllData = useCallback(() => {
@@ -123,11 +307,23 @@ function StudyFlowInner() {
   };
 
   const handleToggleTask = (taskId: string) => {
+    const existing = tasks.find((t) => t.id === taskId);
+    const willBeCompleted = existing ? !existing.completed : false;
+
     const updated = tasks.map((t) =>
       t.id === taskId ? { ...t, completed: !t.completed } : t
     );
     setTasks(updated);
     StorageManager.saveTasks(updated);
+
+    // Prompt interactive lesson quiz immediately when the student finishes a lesson!
+    if (willBeCompleted && existing) {
+      setActiveQuizTask(existing);
+    }
+  };
+
+  const handleRewardXp = (_amount: number) => {
+    // Rewarded on completing quiz
   };
 
   // 2. Subject Handlers
@@ -245,37 +441,138 @@ function StudyFlowInner() {
     }
   };
 
-  // 7. Profile & Reset Handlers
+  // 7. Profile, Pro UPI Upgrade, Parent Plugins & Auth Handlers
   const handleUpdateProfile = (newProfile: StudentProfile) => {
     setProfile(newProfile);
     StorageManager.saveProfile(newProfile);
+    if (firebaseUser?.emailVerified) {
+      const providerId = firebaseUser.providerData[0]?.providerId;
+      ensureVerifiedUserProfileInCloud({
+        user: firebaseUser,
+        profile: newProfile,
+        planTier,
+        username: firebaseUser.displayName || newProfile.name,
+        authMethod: providerId === 'google.com' ? 'google' : 'password',
+        parentContact,
+      }).catch((e) => console.warn('Cloud profile update failed:', e));
+    }
+  };
+
+  const handleUpgradePlan = (receipt: UpiPaymentReceipt) => {
+    const updatedReceipts = [receipt, ...upiReceipts];
+    setUpiReceipts(updatedReceipts);
+    StorageManager.setUpiReceipts(updatedReceipts);
+    setPlanTier(receipt.planTier);
+    StorageManager.setPlanTier(receipt.planTier);
+    if (firebaseUser?.emailVerified) {
+      updatePlanTierInCloud(firebaseUser, receipt.planTier).catch((e) =>
+        console.warn('Cloud planTier update failed:', e)
+      );
+      recordUpiPaymentInCloud(firebaseUser, receipt).catch((e) =>
+        console.warn('Cloud payment record failed:', e)
+      );
+    }
+  };
+
+  const handleActivateFreePro = () => {
+    setPlanTier('pro_ultra');
+    StorageManager.setPlanTier('pro_ultra');
+    if (firebaseUser?.emailVerified) {
+      updatePlanTierInCloud(firebaseUser, 'pro_ultra').catch((e) =>
+        console.warn('Cloud planTier update failed:', e)
+      );
+    }
+  };
+
+  const handleSaveParentContact = (cfg: ParentContactConfig) => {
+    setParentContact(cfg);
+    StorageManager.setParentContact(cfg);
+    if (firebaseUser?.emailVerified) {
+      const providerId = firebaseUser.providerData[0]?.providerId;
+      ensureVerifiedUserProfileInCloud({
+        user: firebaseUser,
+        profile,
+        planTier,
+        username: firebaseUser.displayName || profile.name,
+        authMethod: providerId === 'google.com' ? 'google' : 'password',
+        parentContact: cfg,
+      }).catch((e) => console.warn('Cloud parent contact update failed:', e));
+    }
+  };
+
+  const handleRecordParentReport = (record: ParentReportRecord) => {
+    const updated = [record, ...parentReports];
+    setParentReports(updated);
+    StorageManager.setParentReports(updated);
+    if (firebaseUser?.emailVerified) {
+      recordParentReportInCloud(firebaseUser, record).catch((e) =>
+        console.warn('Cloud parent report log failed:', e)
+      );
+    }
+  };
+
+  const handleContinueAsGuest = () => {
+    setGuestMode(true);
+    StorageManager.setGuestMode(true);
+    setShowAuthModal(false);
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await logoutFirebaseUser();
+    } catch (e) {
+      console.warn('Firebase signOut error:', e);
+    }
+    StorageManager.setLocalAuthSession(null);
+    setLocalAuthUser(null);
+    setGuestMode(true);
+    StorageManager.setGuestMode(true);
   };
 
   const handleResetData = () => {
     StorageManager.resetAllData();
+    setPlanTier('pro_ultra');
     reloadAllData();
   };
 
-  // Wallpaper decoration classes
+  // Wallpaper decoration classes adapted to Light and Dark mode
   const getWallpaperBackground = () => {
-    switch (wallpaper) {
-      case 'meadow':
-        return 'bg-gradient-to-b from-emerald-950/20 via-slate-950 to-teal-950/20';
-      case 'clouds':
-        return 'bg-gradient-to-b from-sky-950/20 via-slate-950 to-indigo-950/20';
-      case 'starry':
-        return 'bg-gradient-to-b from-violet-950/25 via-slate-950 to-slate-950';
-      case 'cottage':
-        return 'bg-gradient-to-b from-amber-950/20 via-slate-950 to-orange-950/15';
-      case 'clean':
-      default:
-        return 'bg-slate-950';
+    if (isDark) {
+      switch (wallpaper) {
+        case 'meadow':
+          return 'bg-gradient-to-b from-emerald-950/20 via-slate-950 to-teal-950/20';
+        case 'clouds':
+          return 'bg-gradient-to-b from-sky-950/20 via-slate-950 to-indigo-950/20';
+        case 'starry':
+          return 'bg-gradient-to-b from-violet-950/25 via-slate-950 to-slate-950';
+        case 'cottage':
+          return 'bg-gradient-to-b from-amber-950/20 via-slate-950 to-orange-950/15';
+        case 'clean':
+        default:
+          return 'bg-slate-950';
+      }
+    } else {
+      switch (wallpaper) {
+        case 'meadow':
+          return 'bg-gradient-to-b from-emerald-50/70 via-slate-50 to-teal-50/70';
+        case 'clouds':
+          return 'bg-gradient-to-b from-sky-50/70 via-slate-50 to-indigo-50/70';
+        case 'starry':
+          return 'bg-gradient-to-b from-purple-50/60 via-slate-50 to-slate-100';
+        case 'cottage':
+          return 'bg-gradient-to-b from-amber-50/60 via-slate-50 to-orange-50/60';
+        case 'clean':
+        default:
+          return 'bg-slate-50';
+      }
     }
   };
 
   return (
     <div
-      className={`min-h-screen text-slate-100 flex flex-col antialiased transition-colors duration-300 selection:bg-emerald-500/30 selection:text-emerald-200 ${getWallpaperBackground()} ${themeConfig.bgClass}`}
+      className={`min-h-screen flex flex-col antialiased transition-colors duration-300 selection:bg-emerald-500/30 selection:text-emerald-200 ${
+        isDark ? 'text-slate-100' : 'text-slate-900'
+      } ${getWallpaperBackground()} ${themeConfig.bgClass}`}
     >
       {/* Sidebar Navigation */}
       <Sidebar
@@ -290,6 +587,11 @@ function StudyFlowInner() {
         {/* Top Sticky Header */}
         <TopNav
           profile={profile}
+          planTier={planTier}
+          authUserLabel={authUserLabel}
+          isSignedIn={isSignedIn}
+          onOpenAuth={() => setShowAuthModal(true)}
+          onSignOut={handleSignOut}
           onToggleMobile={() => setMobileOpen(!mobileOpen)}
           onNavigate={handleNavigate}
         />
@@ -326,7 +628,9 @@ function StudyFlowInner() {
             />
           )}
 
-          {currentSection === 'ai' && <StudyFlowzAiView />}
+          {currentSection === 'ai' && (
+            <StudyFlowzAiView planTier={planTier} onNavigate={handleNavigate} />
+          )}
 
           {currentSection === 'music' && <MusicView />}
 
@@ -358,6 +662,10 @@ function StudyFlowInner() {
               onAddAlarm={handleAddAlarm}
               onToggleAlarm={handleToggleAlarm}
               onDeleteAlarm={handleDeleteAlarm}
+              onTestRing={(alarm: SmartAlarm) => {
+                setRingingAlarm(alarm);
+                alarmAudio.startRingingLoop();
+              }}
             />
           )}
 
@@ -375,47 +683,141 @@ function StudyFlowInner() {
               tasks={tasks}
               subjects={subjects}
               focusRecords={focusRecords}
+              planTier={planTier}
+              parentContact={parentContact}
+              parentReports={parentReports}
+              onSaveParentContact={handleSaveParentContact}
+              onRecordReport={handleRecordParentReport}
+              onNavigate={handleNavigate}
+            />
+          )}
+
+          {currentSection === 'pro' && (
+            <ProUpgradeView
+              profile={profile}
+              tasks={tasks}
+              subjects={subjects}
+              focusRecords={focusRecords}
+              planTier={planTier}
+              upiReceipts={upiReceipts}
+              parentContact={parentContact}
+              parentReports={parentReports}
+              onUpgradePlan={handleUpgradePlan}
+              onActivateFreePro={handleActivateFreePro}
+              onSaveParentContact={handleSaveParentContact}
+              onRecordReport={handleRecordParentReport}
+              onNavigate={handleNavigate}
             />
           )}
 
           {currentSection === 'settings' && (
             <SettingsView
               profile={profile}
+              planTier={planTier}
+              authInfo={{
+                isSignedIn,
+                displayName:
+                  firebaseUser?.displayName ||
+                  localAuthUser?.displayName ||
+                  localAuthUser?.username ||
+                  null,
+                email: firebaseUser?.email || localAuthUser?.email || null,
+                emailVerified: Boolean(firebaseUser?.emailVerified),
+                provider:
+                  firebaseUser?.providerData[0]?.providerId === 'google.com'
+                    ? 'google'
+                    : isSignedIn
+                    ? 'password'
+                    : 'guest',
+              }}
+              onOpenAuth={() => setShowAuthModal(true)}
+              onSignOut={handleSignOut}
+              onResendVerification={resendVerificationEmail}
+              onNavigate={handleNavigate}
               onUpdateProfile={handleUpdateProfile}
               onResetData={handleResetData}
             />
           )}
-
-          {currentSection === 'presentation' && (
-            <PresentationModeView
-              onNavigate={handleNavigate}
-              onReloadData={reloadAllData}
-            />
-          )}
         </main>
 
+        {/* Authentication Modal (Gmail + Username/Password + Guest) */}
+        <AuthModal
+          isOpen={showAuthModal}
+          canDismiss={guestMode || isSignedIn}
+          onClose={() => setShowAuthModal(false)}
+          onContinueAsGuest={handleContinueAsGuest}
+          onAuthSuccess={({ method, username, localUser }) => {
+            if (localUser) {
+              StorageManager.setLocalAuthSession(localUser);
+              setLocalAuthUser(localUser);
+            } else if (method === 'google') {
+              StorageManager.setLocalAuthSession(null);
+              setLocalAuthUser(null);
+            }
+            setGuestMode(false);
+            StorageManager.setGuestMode(false);
+            if (username && (profile.name === 'Aarav' || localUser)) {
+              const updated = { ...profile, name: username };
+              setProfile(updated);
+              StorageManager.saveProfile(updated);
+            }
+            setShowAuthModal(false);
+          }}
+        />
+
+        {/* Interactive Lesson Recall Modal (triggered when completing a lesson) */}
+        <LessonQuizModal
+          isOpen={!!activeQuizTask}
+          onClose={() => setActiveQuizTask(null)}
+          lessonTitle={activeQuizTask?.title || ''}
+          subjectName={subjects.find((s) => s.id === activeQuizTask?.subjectId)?.name}
+          subjectId={activeQuizTask?.subjectId}
+          onRewardXp={handleRewardXp}
+          onOpenNotes={() => handleNavigate('notes')}
+        />
+
+        {/* Real-time Alarm Ringing Alert Modal */}
+        <AlarmRingingModal
+          alarm={ringingAlarm}
+          onDismiss={handleDismissAlarm}
+          onSnooze={handleSnoozeAlarm}
+          onStartFocus={handleAlarmStartFocus}
+        />
+
         {/* Global Footer */}
-        <footer className="border-t border-slate-900 bg-slate-950/70 backdrop-blur-sm py-5 px-6 text-xs text-slate-500 mt-auto">
+        <footer
+          className={`border-t py-5 px-6 text-xs mt-auto backdrop-blur-sm transition-colors ${
+            isDark
+              ? 'border-slate-800/80 bg-slate-950/70 text-slate-500'
+              : 'border-slate-200 bg-white/70 text-slate-600'
+          }`}
+        >
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
               <StudyFlowLogo variant="icon" size="xs" glow={false} />
-              <span className="font-bold text-slate-300">StudyFlow</span>
+              <span className={`font-bold ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>
+                StudyFlow
+              </span>
               <span>—</span>
-              <span className="text-emerald-400 font-medium">PLAN • LEARN • GROW</span>
+              <span className="text-emerald-500 dark:text-emerald-400 font-medium">
+                PLAN • LEARN • GROW
+              </span>
               <span>•</span>
-              <span>PuThulir 3.0 Edition</span>
+              <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>
+                &copy; {new Date().getFullYear()} StudyFlow. All rights reserved.
+              </span>
             </div>
-            <div className="flex items-center gap-4 text-[11px] text-slate-400">
+            <div className={`flex items-center gap-4 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
               <button
-                onClick={() => handleNavigate('presentation')}
-                className="hover:text-emerald-300 cursor-pointer underline transition-colors"
+                onClick={() => handleNavigate('music')}
+                className="hover:text-emerald-500 dark:hover:text-emerald-300 cursor-pointer transition-colors"
               >
-                PuThulir 3.0 Presentation
+                Spotify Study Music
               </button>
               <span>•</span>
               <button
                 onClick={() => handleNavigate('settings')}
-                className="hover:text-emerald-300 cursor-pointer transition-colors"
+                className="hover:text-emerald-500 dark:hover:text-emerald-300 cursor-pointer transition-colors"
               >
                 Preferences &amp; Themes
               </button>

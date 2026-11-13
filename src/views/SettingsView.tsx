@@ -9,20 +9,44 @@ import {
   RotateCcw,
   Check,
   Sparkles,
+  Crown,
+  LogIn,
+  LogOut,
+  MailCheck,
+  AlertCircle,
 } from 'lucide-react';
-import { StudentProfile, ThemeType, WallpaperType } from '../types';
+import { NavigationSection, PlanTier, StudentProfile, ThemeType, WallpaperType } from '../types';
 import { useTheme, THEME_CONFIGS } from '../utils/themeContext';
 import { StorageManager } from '../utils/storage';
 import { StudyFlowLogo } from '../components/StudyFlowLogo';
+import { PRO_PLANS } from '../utils/proAndPlugins';
 
 interface SettingsViewProps {
   profile: StudentProfile;
+  planTier: PlanTier;
+  authInfo: {
+    isSignedIn: boolean;
+    displayName: string | null;
+    email: string | null;
+    emailVerified: boolean;
+    provider: 'google' | 'password' | 'guest';
+  };
+  onOpenAuth: () => void;
+  onSignOut: () => void;
+  onResendVerification: () => Promise<void>;
+  onNavigate: (section: NavigationSection) => void;
   onUpdateProfile: (p: StudentProfile) => void;
   onResetData: () => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   profile,
+  planTier,
+  authInfo,
+  onOpenAuth,
+  onSignOut,
+  onResendVerification,
+  onNavigate,
   onUpdateProfile,
   onResetData,
 }) => {
@@ -34,6 +58,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [dailyGoal, setDailyGoal] = useState(profile.dailyGoalMinutes);
   const [avatar, setAvatar] = useState(profile.avatar);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   // Guardian controls
   const [academicFilterOnly, setAcademicFilterOnly] = useState(true);
@@ -72,10 +99,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const content = event.target?.result as string;
       const success = StorageManager.importData(content);
       if (success) {
-        alert('Data successfully imported! Reloading to apply changes...');
-        window.location.reload();
+        setImportMessage('Data successfully imported! Refreshing view...');
+        setTimeout(() => window.location.reload(), 900);
       } else {
-        alert('Invalid backup file. Please ensure it is a valid StudyFlow JSON export.');
+        setImportMessage('Invalid backup file. Please ensure it is a valid StudyFlow JSON export.');
       }
     };
     reader.readAsText(file);
@@ -102,8 +129,126 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             Settings &amp; Personalisation
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl">
-            Customise your themes, wallpapers, student identity, and guardian safety privacy filters.
+            Manage your Gmail / Username account, Pro UPI plan, themes, wallpapers, and guardian safety privacy filters.
           </p>
+        </div>
+      </div>
+
+      {/* 0. Account, Authentication & Pro Plan Status */}
+      <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <User className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-sm font-bold text-white">Account, Cloud Sync &amp; Pro Plan</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[11px] font-bold flex items-center gap-1">
+              <Crown className="w-3 h-3" />
+              {PRO_PLANS.find((p) => p.id === planTier)?.name || 'Starter Student'}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+            <div className="text-[11px] text-slate-400 uppercase font-bold tracking-wider">Sign-In Status</div>
+            {authInfo.isSignedIn ? (
+              <>
+                <div className="text-sm font-bold text-white">
+                  {authInfo.displayName || profile.name}
+                  <span className="ml-2 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 text-[10px] font-mono">
+                    {authInfo.provider === 'google' ? 'Gmail / Google' : 'Username & Password'}
+                  </span>
+                </div>
+                {authInfo.email && !authInfo.email.endsWith('@users.studyflow.app') && (
+                  <div className="text-slate-400 font-mono text-[11px]">{authInfo.email}</div>
+                )}
+                <div className="pt-1 flex flex-wrap items-center gap-2">
+                  {authInfo.emailVerified ? (
+                    <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold text-[11px]">
+                      <MailCheck className="w-3.5 h-3.5" /> Verified • Firebase Cloud Sync Active
+                    </span>
+                  ) : authInfo.provider === 'password' ? (
+                    <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold text-[11px]">
+                      <MailCheck className="w-3.5 h-3.5" /> Account Active • Signed in with Username &amp; Password
+                    </span>
+                  ) : (
+                    <div className="space-y-1.5 w-full">
+                      <span className="inline-flex items-center gap-1 text-amber-300 text-[11px]">
+                        <AlertCircle className="w-3.5 h-3.5" /> Saving locally. Verify email or connect Gmail for Cloud Sync.
+                      </span>
+                      {authInfo.email && !authInfo.email.endsWith('@users.studyflow.app') && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await onResendVerification();
+                              setVerifyMsg('Verification email sent! Check your inbox.');
+                            } catch (e: any) {
+                              setVerifyMsg(e?.message || 'Could not send verification email.');
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-200 text-[11px] font-semibold cursor-pointer"
+                        >
+                          Resend Verification Email
+                        </button>
+                      )}
+                      {verifyMsg && <div className="text-[11px] text-emerald-300">{verifyMsg}</div>}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-sm font-bold text-slate-200">Guest Mode (Local Storage)</div>
+                <p className="text-[11px] text-slate-400">
+                  Sign in with Gmail or Username &amp; Password to sync progress and send Parent Reports via Gmail.
+                </p>
+              </>
+            )}
+
+            <div className="pt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onOpenAuth}
+                className="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-semibold text-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>{authInfo.isSignedIn ? 'Switch Account / Link Gmail' : 'Sign In (Gmail / Password)'}</span>
+              </button>
+              {authInfo.isSignedIn && (
+                <button
+                  type="button"
+                  onClick={onSignOut}
+                  className="px-3.5 py-2 rounded-xl bg-rose-950/40 hover:bg-rose-900/40 border border-rose-500/30 text-rose-300 font-semibold text-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-3">
+            <div>
+              <div className="text-[11px] text-slate-400 uppercase font-bold tracking-wider">Pro Upgrade &amp; Parent Plugins</div>
+              <div className="text-sm font-bold text-white mt-1">
+                {PRO_PLANS.find((p) => p.id === planTier)?.name || 'StudyFlow Pro Ultra'}
+                {planTier === 'pro_ultra' ? ' (Unlocked Free!)' : ''}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                StudyFlow Pro Ultra is unlocked free right now — Gemini 4 Argon Deep Thinking AI and WhatsApp + Gmail Parent Progress Plugins are active.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigate('pro')}
+              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Crown className="w-4 h-4" />
+              <span>Manage Pro Plans &amp; Plugins</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -399,17 +544,56 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             />
           </label>
 
-          <button
-            onClick={() => {
-              if (confirm('Are you sure you want to reset all tasks, notes, and alarms to fresh seed demo data?')) {
-                onResetData();
-              }
-            }}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/40 text-rose-300 text-xs font-semibold border border-rose-500/30 cursor-pointer ml-auto"
-          >
-            <RotateCcw className="w-4 h-4 text-rose-400" />
-            <span>Reset Demo Data</span>
-          </button>
+          {!confirmReset ? (
+            <button
+              onClick={() => setConfirmReset(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/40 text-rose-300 text-xs font-semibold border border-rose-500/30 cursor-pointer ml-auto"
+            >
+              <RotateCcw className="w-4 h-4 text-rose-400" />
+              <span>Reset Demo Data</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                onClick={() => {
+                  onResetData();
+                  setConfirmReset(false);
+                }}
+                className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold cursor-pointer"
+              >
+                Confirm Reset
+              </button>
+              <button
+                onClick={() => setConfirmReset(false)}
+                className="px-3 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+        {importMessage && (
+          <p className="text-xs text-emerald-300 pt-1">{importMessage}</p>
+        )}
+      </div>
+
+      {/* 5. Copyright & Ownership Information */}
+      <div className="rounded-2xl bg-white/95 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-sm text-xs">
+        <div className="flex items-center gap-2.5 pb-2 border-b border-slate-200 dark:border-slate-800">
+          <ShieldCheck className="w-4 h-4 text-emerald-500" />
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white">Copyright &amp; Ownership Notice</h3>
+        </div>
+
+        <div className="space-y-2 text-slate-600 dark:text-slate-400 leading-relaxed">
+          <p className="font-semibold text-slate-800 dark:text-slate-200">
+            &copy; {new Date().getFullYear()} StudyFlow. All rights reserved.
+          </p>
+          <p>
+            <strong>StudyFlow &bull; PLAN | LEARN | GROW</strong> is an intellectual educational productivity platform designed for students. All branding, UI designs, graphics, and interactive learning components are protected under international copyright and intellectual property laws.
+          </p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-500">
+            Powered by Google Gemini AI. Spotify is a registered trademark of Spotify AB. All music streams and playlist embeds are routed via official Spotify APIs.
+          </p>
         </div>
       </div>
     </div>

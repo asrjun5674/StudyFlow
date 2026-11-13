@@ -13,6 +13,8 @@ export type ThemeType =
   | 'ghibli'
   | 'dark';
 
+export type ColorMode = 'light' | 'dark' | 'system';
+
 export type WallpaperType = 'clean' | 'meadow' | 'clouds' | 'starry' | 'cottage';
 
 export type NavigationSection =
@@ -27,8 +29,47 @@ export type NavigationSection =
   | 'alarms'
   | 'wellbeing'
   | 'progress'
-  | 'settings'
-  | 'presentation';
+  | 'pro'
+  | 'settings';
+
+export type PlanTier = 'free' | 'plus' | 'pro_ultra';
+
+export type AuthMethod = 'google' | 'password' | 'guest';
+
+export interface LocalAuthUser {
+  uid: string;
+  username: string;
+  displayName: string;
+  email: string;
+  provider: 'password';
+}
+
+export interface ParentContactConfig {
+  parentName: string;
+  parentEmail: string;
+  parentWhatsapp: string;
+}
+
+export interface UpiPaymentReceipt {
+  id: string;
+  planTier: 'plus' | 'pro_ultra';
+  amountInr: number;
+  upiPayee: string;
+  utrNumber: string;
+  timestamp: string;
+  status: 'verified';
+}
+
+export interface ParentReportRecord {
+  id: string;
+  channel: 'gmail' | 'whatsapp';
+  recipient: string;
+  completionRate: number;
+  weeklyFocusMinutes: number;
+  streakDays: number;
+  timestamp: string;
+  status: 'sent' | 'opened';
+}
 
 export type PriorityLevel = 'high' | 'medium' | 'low';
 

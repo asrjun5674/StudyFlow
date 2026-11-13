@@ -19,9 +19,12 @@ import {
   Heart,
   Flame,
   ArrowRight,
+  Globe,
+  Crown,
 } from 'lucide-react';
 import { VoiceTutor } from '../components/VoiceTutor';
 import { StudyFlowLogo } from '../components/StudyFlowLogo';
+import { NavigationSection, PlanTier } from '../types';
 
 interface ChatMessage {
   id: string;
@@ -31,7 +34,15 @@ interface ChatMessage {
   modelUsed?: string;
 }
 
-export const StudyFlowzAiView: React.FC = () => {
+interface StudyFlowzAiViewProps {
+  planTier?: PlanTier;
+  onNavigate?: (section: NavigationSection) => void;
+}
+
+export const StudyFlowzAiView: React.FC<StudyFlowzAiViewProps> = ({
+  planTier = 'free',
+  onNavigate,
+}) => {
   const [activeMode, setActiveMode] = useState<'voice' | 'chat'>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -39,6 +50,11 @@ export const StudyFlowzAiView: React.FC = () => {
     }
     return 'voice'; // Default to real-time Live Voice conversation
   });
+
+  const [aiModelMode, setAiModelMode] = useState<'flash' | 'argon_thinking'>(() =>
+    planTier === 'plus' || planTier === 'pro_ultra' ? 'argon_thinking' : 'flash'
+  );
+  const hasProAi = planTier === 'plus' || planTier === 'pro_ultra';
 
   const [language, setLanguage] = useState<'en' | 'ta'>('en');
   const [selectedSubject, setSelectedSubject] = useState<'General' | 'Mathematics' | 'Science' | 'English' | 'Social Science'>('General');
@@ -48,12 +64,12 @@ export const StudyFlowzAiView: React.FC = () => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<any>(null);
 
   const initialWelcome = language === 'ta'
-    ? 'வணக்கம்! நான் StudyFlowz, உங்கள் நண்பன் மற்றும் கல்வி வழிகாட்டி. நீங்கள் தனியாகப் படிக்கும்போது சோர்வாகவோ, தனிமையாகவோ உணர்ந்தால் என்னிடம் பேசுங்கள். கணிதம், அறிவியல், வீட்டுப்பாடம் மற்றும் ஊக்கமூட்டும் வார்த்தைகள் எதுவானாலும் நான் உங்களுடன் இருக்கிறேன்!'
-    : "Hello! I'm StudyFlowz, your friendly AI companion and study buddy! Whether you are stuck on a tough concept, preparing for exams, or feeling lonely and tired during late-night study hours—I'm right here with you. What shall we explore together?";
+    ? 'வணக்கம்! நான் StudyFlowz, உங்கள் நண்பன் மற்றும் கல்வி வழிகாட்டி. நான் தமிழ் மற்றும் ஆங்கிலம் (English & Tamil) ஆதரிக்கிறேன், ஆனால் உலகின் அனைத்து மொழிகளையும் என்னால் புரிந்துகொண்டு உதவ முடியும்! நீங்கள் தனியாகப் படிக்கும்போது சோர்வாகவோ, தனிமையாகவோ உணர்ந்தால் என்னிடம் பேசுங்கள். என்ன படிக்கலாம்?'
+    : "Hello! I'm StudyFlowz, your friendly AI companion and study buddy! I have English and Tamil supported (and I can understand and converse in all languages of the world!). Whether you are stuck on a tough concept, preparing for exams, or feeling lonely and tired during late-night study hours—I'm right here with you. What shall we explore together?";
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -66,7 +82,9 @@ export const StudyFlowzAiView: React.FC = () => {
   ]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
   }, [messages, loading]);
 
   // Speech Recognition (Mic Input for text box)
@@ -79,7 +97,15 @@ export const StudyFlowzAiView: React.FC = () => {
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert('Speech recognition is not supported in this browser. You can type your doubt in the box.');
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `sys-${Date.now()}`,
+          role: 'model',
+          content: 'Voice-to-text dictation is not supported in this browser. You can type your doubt in the message box below!',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        },
+      ]);
       return;
     }
 
@@ -156,7 +182,12 @@ export const StudyFlowzAiView: React.FC = () => {
     try {
       const systemInstruction = `You are StudyFlowz, a compassionate, lively, warm, and brilliant personal study companion and tutor designed for school and college students.
 Subject focus: ${selectedSubject}.
-Language requirement: ${language === 'ta' ? 'Respond primarily in clear, warm, grammatically sound Tamil (தமிழ்) with English technical terms in brackets where helpful for academic clarity.' : 'Respond in encouraging, clear English suitable for students, avoiding overly dense jargon unless explained.'}
+
+MULTILINGUAL CAPABILITIES & STATED SUPPORT (MANDATORY REQUIREMENT):
+- You know, comprehend, and can converse in ALL languages in the world (such as French, Spanish, German, Hindi, Telugu, Malayalam, Kannada, Arabic, Mandarin, Japanese, Russian, etc.). You can understand and assist any student in whatever language they write to you in.
+- STATED SUPPORT RULE: Whenever you introduce yourself, list your capabilities, or when asked what languages you support, you MUST explicitly state that you have English and Tamil supported (e.g. "I have English and Tamil supported, but I can understand and help you in any language in the world!").
+- Current language mode: ${language === 'ta' ? 'Respond primarily in clear, warm, grammatically sound Tamil (தமிழ்) with English technical terms in brackets where helpful for academic clarity.' : 'Respond in encouraging, clear English suitable for students, avoiding overly dense jargon unless explained.'}
+
 Emotional companionship:
 - When the student feels lonely, tired, isolated, or overwhelmed, validate their emotions with genuine warmth, companionship, and uplifting encouragement ("I am right here with you! You are doing great, and you never have to face this alone.").
 - Provide quick, lively, clear answers.
@@ -165,14 +196,25 @@ Pedagogy:
 - Use simple real-world analogies.
 - Emphasize safety, constructive learning habits, and positive encouragement.`;
 
-      const res = await fetch('/api/chat', {
+      const useDeepArgon = aiModelMode === 'argon_thinking' && hasProAi;
+      const endpoint = useDeepArgon ? '/api/deep-thinking' : '/api/chat';
+      const payload = useDeepArgon
+        ? {
+            prompt: text,
+            subject: selectedSubject,
+            detailLevel: 'thorough',
+          }
+        : {
+            messages: newHistory.map((m) => ({ role: m.role, content: m.content })),
+            systemInstruction,
+            model: hasProAi ? 'gemini-4-argon' : 'gemini-3.8-flash',
+            thinkingMode: hasProAi,
+          };
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: newHistory.map((m) => ({ role: m.role, content: m.content })),
-          systemInstruction,
-          model: 'gemini-3.8-flash',
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -183,9 +225,9 @@ Pedagogy:
       const botReply: ChatMessage = {
         id: `bot-${Date.now()}`,
         role: 'model',
-        content: data.reply,
+        content: useDeepArgon ? data.solution || data.reply : data.reply,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        modelUsed: data.modelUsed || 'gemini-3.8-flash',
+        modelUsed: data.modelUsed || (useDeepArgon ? 'gemini-4-argon' : 'gemini-3.8-flash'),
       };
 
       setMessages((prev) => [...prev, botReply]);
@@ -213,16 +255,16 @@ Pedagogy:
 
   const starterPrompts = language === 'ta'
     ? [
+        { label: 'ஆதரிக்கப்படும் மொழிகள்', text: 'நீங்கள் எந்தெந்த மொழிகளை ஆதரிக்கிறீர்கள்?' },
         { label: 'தனிமை & ஊக்கம்', text: 'நான் தனியாகப் படிக்கும்போது சோர்வாகவும் தனிமையாகவும் உணர்கிறேன். எனக்கு ஊக்கமளிக்கவும்.' },
         { label: 'கணிதம்', text: 'முக்கோணவியல் (Trigonometry) சூத்திரங்களை எப்படி எளிதாக நினைவில் வைத்துக்கொள்வது?' },
         { label: 'அறிவியல்', text: 'ஒளிச்சேர்க்கை (Photosynthesis) செயல்முறையை எளிய தமிழில் விளக்கு.' },
-        { label: 'ஆங்கிலம்', text: 'Active Voice மற்றும் Passive Voice வித்தியாசம் என்ன? உதாரணங்களுடன் விளக்கு.' },
       ]
     : [
+        { label: 'Supported Languages', text: 'What languages do you support?' },
         { label: 'Feeling Lonely', text: "I'm feeling lonely and tired studying by myself tonight. Can you keep me company and motivate me?" },
         { label: 'Energy Boost', text: 'I have a big study session ahead and my motivation is dipping. Give me an inspiring pep talk!' },
         { label: 'Math Step-by-Step', text: 'Can you show me how to solve 2x² - 7x + 3 = 0 step by step using factoring?' },
-        { label: 'Science Concept', text: 'Why is the sky blue in the day but red during sunset? Explain simply.' },
       ];
 
   return (
@@ -266,7 +308,10 @@ Pedagogy:
             Empathetic Companion &amp; Study Partner
           </span>
           <span className="hidden md:inline">•</span>
-          <span className="hidden md:inline">English &amp; தமிழ் Supported</span>
+          <span className="hidden md:inline text-emerald-300 font-medium flex items-center gap-1">
+            <Globe className="w-3 h-3 text-emerald-400" />
+            English &amp; தமிழ் Supported (Understands All World Languages)
+          </span>
         </div>
       </div>
 
@@ -283,19 +328,50 @@ Pedagogy:
               <div>
                 <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold uppercase tracking-wider mb-2 border border-emerald-500/30">
                   <Bot className="w-3.5 h-3.5 text-emerald-400" />
-                  StudyFlowz Chat • English &amp; தமிழ்
+                  StudyFlowz Chat • English &amp; தமிழ் Supported
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
                   Ask StudyFlowz Anything!
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl">
-                  Your patient, supportive study buddy. Ask homework doubts, request step-by-step math derivations, or get uplifting motivation when you are feeling tired.
+                  Your patient, supportive study buddy. Officially supports English and Tamil, with universal understanding of all world languages. Ask homework doubts or talk when you feel tired.
                 </p>
               </div>
             </div>
 
-            {/* Controls: Language & Subject Selector */}
+            {/* Controls: Language, Gemini Pro Mode & Subject Selector */}
             <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex p-1 rounded-xl bg-slate-950 border border-slate-800">
+                <button
+                  onClick={() => setAiModelMode('flash')}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                    aiModelMode === 'flash'
+                      ? 'bg-sky-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Gemini 3.8 Flash
+                </button>
+                <button
+                  onClick={() => {
+                    if (hasProAi) {
+                      setAiModelMode('argon_thinking');
+                    } else {
+                      onNavigate?.('pro');
+                    }
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                    aiModelMode === 'argon_thinking' && hasProAi
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                      : 'text-amber-300 hover:text-amber-200'
+                  }`}
+                  title={hasProAi ? 'Gemini 4 Argon Deep Thinking STEM Engine' : 'Unlock Gemini 4 Argon Deep Thinking via UPI'}
+                >
+                  <Crown className="w-3 h-3" />
+                  <span>{hasProAi ? 'Gemini 4 Pro Think' : 'Unlock Pro AI (UPI)'}</span>
+                </button>
+              </div>
+
               <div className="inline-flex p-1 rounded-xl bg-slate-950 border border-slate-800">
                 <button
                   onClick={() => setLanguage('en')}
@@ -358,7 +434,7 @@ Pedagogy:
           {/* Main Chat Conversation Stage */}
           <div className="rounded-3xl bg-slate-900/80 border border-slate-800 flex flex-col h-[560px] shadow-xl overflow-hidden">
             {/* Messages Thread */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
               {messages.map((msg) => {
                 const isUser = msg.role === 'user';
                 return (
@@ -442,7 +518,6 @@ Pedagogy:
                 </div>
               )}
 
-              <div ref={messagesEndRef} />
             </div>
 
             {/* Quick starter questions & Anti-Loneliness prompts */}

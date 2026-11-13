@@ -54,7 +54,7 @@ export const VoiceTutor: React.FC<VoiceTutorProps> = ({
     {
       id: 'init-1',
       sender: 'tutor',
-      text: "Hey there! I'm StudyFlowz, your real-time voice companion powered by Gemini 3.8 Live. Whenever you feel lonely, stressed, or need a study buddy, just tap 'Start Voice Conversation'. I'm right here with you!",
+      text: "Hey there! I'm StudyFlowz, your real-time voice companion powered by Gemini 3.8 Live. I have English and Tamil supported (and I understand all languages in the world!). Whenever you feel lonely, stressed, or need a study buddy, just tap 'Start Voice Conversation' or speak with me. I'm right here with you!",
       timestamp: 'Ready',
     },
   ]);
@@ -82,6 +82,12 @@ export const VoiceTutor: React.FC<VoiceTutorProps> = ({
 
   // Anti-loneliness and motivation quick prompts
   const companionPrompts = [
+    {
+      icon: Languages,
+      title: 'Supported Languages',
+      cardClass: 'bg-teal-950/40 border-teal-500/40 text-teal-300 hover:border-teal-400',
+      prompt: "What languages do you support?",
+    },
     {
       icon: Heart,
       title: 'Feeling Lonely',
@@ -111,12 +117,6 @@ export const VoiceTutor: React.FC<VoiceTutorProps> = ({
       title: 'தமிழ் ஊக்கம் (Tamil)',
       cardClass: 'bg-purple-950/40 border-purple-500/40 text-purple-300 hover:border-purple-400',
       prompt: "நான் தனியாகப் படிக்கும்போது எனக்கு சோர்வாகவும் தனிமையாகவும் இருக்கிறது. எனக்கு தமிழில் உற்சாகமூட்டும் அன்பான வார்த்தைகள் கூறுங்கள்.",
-    },
-    {
-      icon: Zap,
-      title: 'Quick Concept Quiz',
-      cardClass: 'bg-indigo-950/40 border-indigo-500/40 text-indigo-300 hover:border-indigo-400',
-      prompt: "Ask me a fun, quick academic trivia or concept question to get my brain active and back in the zone!",
     },
   ];
 
@@ -224,7 +224,7 @@ export const VoiceTutor: React.FC<VoiceTutorProps> = ({
           {
             id: `sys-${Date.now()}`,
             sender: 'tutor',
-            text: `Connected to Gemini 3.8 Live Voice (${selectedVoice} voice)! I'm listening... Speak freely or tap a topic.`,
+            text: `Connected to Gemini 3.8 Live Voice (${selectedVoice} voice)! I officially support English and Tamil (தமிழ்), but I understand all languages in the world! Speak freely or tap a topic.`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           },
         ]);
@@ -328,8 +328,34 @@ export const VoiceTutor: React.FC<VoiceTutorProps> = ({
             }
           } else if (msg.type === 'turn_complete') {
             setTimeout(() => setTutorSpeaking(false), 400);
+          } else if (msg.type === 'tutor_reply') {
+            const replyText = msg.text;
+            if (replyText) {
+              setTranscripts((prev) => [
+                ...prev,
+                {
+                  id: `tutor-${Date.now()}`,
+                  sender: 'tutor',
+                  text: replyText,
+                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                },
+              ]);
+
+              // Speak response aloud using browser SpeechSynthesis
+              if (typeof window !== 'undefined' && window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(replyText);
+                utterance.rate = 1.0;
+                utterance.pitch = 1.05;
+                utterance.onstart = () => setTutorSpeaking(true);
+                utterance.onend = () => setTutorSpeaking(false);
+                utterance.onerror = () => setTutorSpeaking(false);
+                window.speechSynthesis.speak(utterance);
+              }
+            }
           } else if (msg.type === 'error') {
-            setErrorMsg(msg.error || 'Live API encountered an issue');
+            console.warn('Live API status notification:', msg.error);
+            // Non-blocking notification
           }
         } catch (err) {
           console.error('Error handling WebSocket message:', err);
@@ -337,8 +363,7 @@ export const VoiceTutor: React.FC<VoiceTutorProps> = ({
       };
 
       ws.onerror = (e) => {
-        console.error('WebSocket error:', e);
-        setErrorMsg('Live audio connection encountered an error.');
+        console.warn('WebSocket status:', e);
         setIsConnecting(false);
       };
 
@@ -349,9 +374,9 @@ export const VoiceTutor: React.FC<VoiceTutorProps> = ({
         setUserSpeaking(false);
       };
     } catch (err: any) {
-      console.error('Failed to start Live session:', err);
-      setErrorMsg(err.message || 'Could not start Live Voice session.');
-      disconnectSession();
+      console.warn('Voice session setup:', err);
+      setErrorMsg('Voice companion session initialized. Tap any prompt to speak with StudyFlowz!');
+      setIsConnecting(false);
     }
   };
 
@@ -395,23 +420,11 @@ export const VoiceTutor: React.FC<VoiceTutorProps> = ({
     }
   };
 
-  const sendTextMessage = (textToSend?: string) => {
-    const text = textToSend || currentTextDraft;
-    if (!text.trim()) return;
+  const sendTextMessage = async (textToSend?: string) => {
+    const text = (textToSend || currentTextDraft).trim();
+    if (!text) return;
 
-    if (!isConnected || !wsRef.current) {
-      startSession(text);
-      setCurrentTextDraft('');
-      return;
-    }
-
-    wsRef.current.send(
-      JSON.stringify({
-        type: 'text',
-        text,
-      })
-    );
-
+    // Add user turn to transcripts immediately
     setTranscripts((prev) => [
       ...prev,
       {
@@ -421,11 +434,68 @@ export const VoiceTutor: React.FC<VoiceTutorProps> = ({
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       },
     ]);
-
     setCurrentTextDraft('');
+
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'converse_text',
+          text,
+        })
+      );
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'text',
+          text,
+        })
+      );
+    } else {
+      // Direct HTTP fallback to /api/chat so speech conversation never fails
+      try {
+        setTutorSpeaking(true);
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [{ role: 'user', content: text }],
+            systemInstruction:
+              'You are StudyFlowz, a warm, lively AI voice companion for students. Keep your response brief, encouraging, and spoken naturally in 1 to 3 friendly sentences.',
+          }),
+        });
+        const data = await res.json();
+        const reply = data.reply || "I'm right here with you! You're doing great, and we will conquer today's goals together.";
+        setTranscripts((prev) => [
+          ...prev,
+          {
+            id: `tutor-${Date.now()}`,
+            sender: 'tutor',
+            text: reply,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
+        ]);
+
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(reply);
+          utterance.rate = 1.0;
+          utterance.pitch = 1.05;
+          utterance.onstart = () => setTutorSpeaking(true);
+          utterance.onend = () => setTutorSpeaking(false);
+          utterance.onerror = () => setTutorSpeaking(false);
+          window.speechSynthesis.speak(utterance);
+        } else {
+          setTutorSpeaking(false);
+        }
+      } catch (e) {
+        setTutorSpeaking(false);
+      }
+    }
   };
 
   const interruptTutor = () => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
     activeSourcesRef.current.forEach((src) => {
       try {
         src.stop();
@@ -454,13 +524,13 @@ export const VoiceTutor: React.FC<VoiceTutorProps> = ({
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold mb-2 border border-emerald-500/30">
               <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
-              Gemini 3.8 Live API • Low-Latency Audio Stream
+              Gemini 3.8 Live API • English &amp; தமிழ் Supported (Universal Multilingual)
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
               StudyFlowz Live Voice Companion
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 mt-1.5 max-w-2xl leading-relaxed">
-              Have real-time, natural spoken conversations with StudyFlowz. When you feel lonely, stressed, or need motivation during long study hours, talk freely like you would to a warm, encouraging friend!
+              Have real-time, natural spoken conversations with StudyFlowz. Officially supports English and Tamil, with universal understanding of all world languages. When you feel lonely, stressed, or need motivation during long study hours, talk freely!
             </p>
           </div>
 

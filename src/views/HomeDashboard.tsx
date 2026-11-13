@@ -283,29 +283,33 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                   return (
                     <div
                       key={task.id}
-                      onClick={() => onToggleTask(task.id)}
-                      className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                      className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
                         task.completed
-                          ? 'bg-slate-950/40 border-slate-800/60 opacity-60'
-                          : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                          ? 'bg-slate-100/70 dark:bg-slate-950/40 border-slate-200 dark:border-slate-800/60 opacity-70'
+                          : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:border-emerald-400 dark:hover:border-slate-700 shadow-sm'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
                         <button
                           type="button"
-                          className={`w-5 h-5 rounded-lg border flex items-center justify-center transition-colors ${
+                          onClick={() => onToggleTask(task.id)}
+                          className={`w-5 h-5 rounded-lg border flex items-center justify-center transition-colors shrink-0 cursor-pointer ${
                             task.completed
                               ? 'bg-emerald-500 border-emerald-500 text-slate-950'
-                              : 'border-slate-700 hover:border-emerald-400'
+                              : 'border-slate-300 dark:border-slate-700 hover:border-emerald-400'
                           }`}
+                          title={task.completed ? 'Mark incomplete' : 'Mark finished'}
+                          aria-label="Toggle task completed"
                         >
                           {task.completed && <CheckCircle2 className="w-3.5 h-3.5 stroke-[3]" />}
                         </button>
-                        <div>
-                          <div className="flex items-center gap-2">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span
                               className={`text-xs font-semibold ${
-                                task.completed ? 'line-through text-slate-400' : 'text-slate-100'
+                                task.completed
+                                  ? 'line-through text-slate-400 dark:text-slate-500'
+                                  : 'text-slate-900 dark:text-slate-100'
                               }`}
                             >
                               {task.title}
@@ -323,18 +327,35 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                             )}
                           </div>
                           {task.notes && (
-                            <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5">
                               {task.notes}
                             </p>
                           )}
                         </div>
                       </div>
 
-                      {task.time && (
-                        <span className="text-[11px] font-mono text-slate-400 shrink-0">
-                          {task.time}
-                        </span>
-                      )}
+                      {/* Right: Time & Explicit Finished Quiz Button */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {task.time && (
+                          <span className="text-[11px] font-mono text-slate-400 hidden sm:inline">
+                            {task.time}
+                          </span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => onToggleTask(task.id)}
+                          className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                            task.completed
+                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25'
+                              : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm shadow-emerald-600/20 active:scale-95'
+                          }`}
+                          title="Click when finished to take the quick lesson recall quiz!"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>{task.completed ? 'Finished ✓' : 'Finished'}</span>
+                        </button>
+                      </div>
                     </div>
                   );
                 })}

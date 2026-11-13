@@ -1,0 +1,208 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------
+    // Global Safety Net (Default-Deny)
+    // ---------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ---------------------------------------------------------
+    // Reusable Hardened Primitives
+    // ---------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function userExists(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId));
+    }
+
+    // ---------------------------------------------------------
+    // Validation Blueprints
+    // ---------------------------------------------------------
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll([
+        'uid', 'username', 'displayName', 'grade', 'school',
+        'avatar', 'dailyGoalMinutes', 'streakDays', 'language',
+        'planTier', 'authMethod', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'uid', 'username', 'displayName', 'grade', 'school',
+        'avatar', 'dailyGoalMinutes', 'streakDays', 'language',
+        'planTier', 'authMethod', 'createdAt', 'updatedAt'
+      ])
+      && data.uid == request.auth.uid
+      && data.uid == userId
+      && isValidId(data.uid)
+      && data.username is string && data.username.size() >= 2 && data.username.size() <= 40
+      && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
+      && data.grade is string && data.grade.size() >= 1 && data.grade.size() <= 60
+      && data.school is string && data.school.size() <= 120
+      && data.avatar is string && data.avatar.size() >= 1 && data.avatar.size() <= 16
+      && data.dailyGoalMinutes is int && data.dailyGoalMinutes >= 10 && data.dailyGoalMinutes <= 720
+      && data.streakDays is int && data.streakDays >= 0 && data.streakDays <= 10000
+      && data.language in ['en', 'ta']
+      && data.planTier in ['free', 'plus', 'pro_ultra']
+      && data.authMethod in ['google', 'password']
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivateInfo(data, userId) {
+      return data.keys().hasAll([
+        'uid', 'email', 'parentName', 'parentEmail', 'parentWhatsapp', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'uid', 'email', 'parentName', 'parentEmail', 'parentWhatsapp', 'createdAt', 'updatedAt'
+      ])
+      && data.uid == request.auth.uid
+      && data.uid == userId
+      && isValidId(data.uid)
+      && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+      && data.parentName is string && data.parentName.size() <= 80
+      && data.parentEmail is string && data.parentEmail.size() <= 160
+      && data.parentWhatsapp is string && data.parentWhatsapp.size() <= 24
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidUpiPayment(data, userId) {
+      return data.keys().hasAll([
+        'uid', 'planTier', 'amountInr', 'upiPayee', 'utrNumber', 'status', 'createdAt'
+      ])
+      && data.keys().hasOnly([
+        'uid', 'planTier', 'amountInr', 'upiPayee', 'utrNumber', 'status', 'createdAt'
+      ])
+      && data.uid == request.auth.uid
+      && data.uid == userId
+      && isValidId(data.uid)
+      && data.planTier in ['plus', 'pro_ultra']
+      && data.amountInr is int && data.amountInr >= 1 && data.amountInr <= 50000
+      && data.upiPayee is string && data.upiPayee.size() >= 10 && data.upiPayee.size() <= 64
+      && data.utrNumber is string && data.utrNumber.size() >= 8 && data.utrNumber.size() <= 32
+      && data.utrNumber.matches('^[a-zA-Z0-9]+$')
+      && data.status == 'verified'
+      && data.createdAt is timestamp;
+    }
+
+    function isValidParentReport(data, userId) {
+      return data.keys().hasAll([
+        'uid', 'channel', 'completionRate', 'weeklyFocusMinutes', 'streakDays', 'sentAt'
+      ])
+      && data.keys().hasOnly([
+        'uid', 'channel', 'completionRate', 'weeklyFocusMinutes', 'streakDays', 'sentAt'
+      ])
+      && data.uid == request.auth.uid
+      && data.uid == userId
+      && isValidId(data.uid)
+      && data.channel in ['gmail', 'whatsapp']
+      && data.completionRate is int && data.completionRate >= 0 && data.completionRate <= 100
+      && data.weeklyFocusMinutes is int && data.weeklyFocusMinutes >= 0 && data.weeklyFocusMinutes <= 20000
+      && data.streakDays is int && data.streakDays >= 0 && data.streakDays <= 10000
+      && data.sentAt is timestamp;
+    }
+
+    // ---------------------------------------------------------
+    // Collection Rules
+    // ---------------------------------------------------------
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId)
+                    && isOwner(userId)
+                    && isValidUserProfile(incoming(), userId)
+                    && incoming().createdAt == request.time
+                    && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+                    && isOwner(userId)
+                    && isValidUserProfile(incoming(), userId)
+                    && incoming().uid == existing().uid
+                    && incoming().createdAt == existing().createdAt
+                    && incoming().updatedAt == request.time
+                    && (
+                      incoming().diff(existing()).affectedKeys().hasOnly([
+                        'username', 'displayName', 'grade', 'school', 'avatar',
+                        'dailyGoalMinutes', 'streakDays', 'language', 'updatedAt'
+                      ]) ||
+                      incoming().diff(existing()).affectedKeys().hasOnly([
+                        'planTier', 'updatedAt'
+                      ])
+                    );
+      allow delete: if false;
+
+      match /private/{docId} {
+        allow get: if isValidId(userId) && docId == 'info' && isOwner(userId);
+        allow list: if false;
+        allow create: if isValidId(userId)
+                      && docId == 'info'
+                      && isOwner(userId)
+                      && userExists(userId)
+                      && isValidUserPrivateInfo(incoming(), userId)
+                      && incoming().createdAt == request.time
+                      && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+                      && docId == 'info'
+                      && isOwner(userId)
+                      && userExists(userId)
+                      && isValidUserPrivateInfo(incoming(), userId)
+                      && incoming().uid == existing().uid
+                      && incoming().createdAt == existing().createdAt
+                      && incoming().updatedAt == request.time
+                      && incoming().diff(existing()).affectedKeys().hasOnly([
+                        'email', 'parentName', 'parentEmail', 'parentWhatsapp', 'updatedAt'
+                      ]);
+        allow delete: if false;
+      }
+
+      match /payments/{paymentId} {
+        allow get: if isValidId(userId) && isValidId(paymentId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().uid == request.auth.uid;
+        allow create: if isValidId(userId)
+                      && isValidId(paymentId)
+                      && isOwner(userId)
+                      && userExists(userId)
+                      && isValidUpiPayment(incoming(), userId)
+                      && incoming().createdAt == request.time;
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      match /parentReports/{reportId} {
+        allow get: if isValidId(userId) && isValidId(reportId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().uid == request.auth.uid;
+        allow create: if isValidId(userId)
+                      && isValidId(reportId)
+                      && isOwner(userId)
+                      && userExists(userId)
+                      && isValidParentReport(incoming(), userId)
+                      && incoming().sentAt == request.time;
+        allow update: if false;
+        allow delete: if false;
+      }
+    }
+  }
+}

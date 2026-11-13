@@ -1,0 +1,210 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Non-PII student profile, academic preferences, and active StudyFlow subscription tier.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Authentication user UID"
+        },
+        "username": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 40,
+          "description": "Student username or display handle"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Student display name"
+        },
+        "grade": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Academic grade or class"
+        },
+        "school": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 120,
+          "description": "School or institution name"
+        },
+        "avatar": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16,
+          "description": "Student emoji avatar"
+        },
+        "dailyGoalMinutes": {
+          "type": "integer",
+          "description": "Daily focus goal in minutes"
+        },
+        "streakDays": {
+          "type": "integer",
+          "description": "Consecutive active study days"
+        },
+        "language": {
+          "type": "string",
+          "enum": ["en", "ta"],
+          "description": "Preferred primary study language (English or Tamil)"
+        },
+        "planTier": {
+          "type": "string",
+          "enum": ["free", "plus", "pro_ultra"],
+          "description": "Active StudyFlow subscription tier"
+        },
+        "authMethod": {
+          "type": "string",
+          "enum": ["google", "password"],
+          "description": "Primary sign-in provider"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp"
+        }
+      },
+      "required": ["uid", "username", "displayName", "grade", "avatar", "dailyGoalMinutes", "streakDays", "language", "planTier", "authMethod", "createdAt", "updatedAt"]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Strictly isolated PII containing student email and parent contact details for WhatsApp and Gmail progress reports.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        },
+        "parentName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "parentEmail": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "parentWhatsapp": {
+          "type": "string",
+          "maxLength": 24
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "createdAt", "updatedAt"]
+    },
+    "UpiPaymentRecord": {
+      "title": "UpiPaymentRecord",
+      "description": "UPI payment verification record for unlocking StudyFlow Plus or Pro Ultra tiers via 9841092311.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "planTier": {
+          "type": "string",
+          "enum": ["plus", "pro_ultra"]
+        },
+        "amountInr": {
+          "type": "integer"
+        },
+        "upiPayee": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 64
+        },
+        "utrNumber": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9]+$"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["verified"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "planTier", "amountInr", "upiPayee", "utrNumber", "status", "createdAt"]
+    },
+    "ParentReportLog": {
+      "title": "ParentReportLog",
+      "description": "Audit log of parent progress summaries shared via Gmail or WhatsApp.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "channel": {
+          "type": "string",
+          "enum": ["gmail", "whatsapp"]
+        },
+        "completionRate": {
+          "type": "integer"
+        },
+        "weeklyFocusMinutes": {
+          "type": "integer"
+        },
+        "streakDays": {
+          "type": "integer"
+        },
+        "sentAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "channel", "completionRate", "weeklyFocusMinutes", "streakDays", "sentAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Student account profile and active plan tier."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Isolated PII document ('info') storing student email and parent contact details."
+    },
+    "/users/{userId}/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/UpiPaymentRecord" },
+      "description": "Student UPI payment upgrade records."
+    },
+    "/users/{userId}/parentReports/{reportId}": {
+      "schema": { "$ref": "#/entities/ParentReportLog" },
+      "description": "Log of parent progress reports sent via Gmail or WhatsApp."
+    }
+  }
+}

@@ -13,14 +13,21 @@ import {
   FocusRecord,
   StudentProfile,
   ThemeType,
+  ColorMode,
   WallpaperType,
   FormulaItem,
   DictionaryItem,
+  PlanTier,
+  ParentContactConfig,
+  UpiPaymentReceipt,
+  ParentReportRecord,
+  LocalAuthUser,
 } from '../types';
 
 const STORAGE_KEYS = {
   PROFILE: 'studyflow_profile',
   THEME: 'studyflow_theme',
+  COLOR_MODE: 'studyflow_color_mode',
   WALLPAPER: 'studyflow_wallpaper',
   TASKS: 'studyflow_tasks',
   SUBJECTS: 'studyflow_subjects',
@@ -29,6 +36,14 @@ const STORAGE_KEYS = {
   ALARMS: 'studyflow_alarms',
   MOODS: 'studyflow_moods',
   FOCUS: 'studyflow_focus',
+  PLAN_TIER: 'studyflow_plan_tier',
+  PARENT_CONTACT: 'studyflow_parent_contact',
+  UPI_RECEIPTS: 'studyflow_upi_receipts',
+  PARENT_REPORTS: 'studyflow_parent_reports',
+  GUEST_MODE: 'studyflow_guest_mode',
+  USERNAME_MAP: 'studyflow_username_map',
+  LOCAL_AUTH_SESSION: 'studyflow_local_auth_session',
+  PRO_FREE_PROMO_APPLIED: 'studyflow_free_pro_ultra_v1',
 };
 
 // Initial Seed Data
@@ -387,6 +402,9 @@ export const StorageManager = {
   getTheme: (): ThemeType => loadFromStorage(STORAGE_KEYS.THEME, 'mint'),
   setTheme: (t: ThemeType) => saveToStorage(STORAGE_KEYS.THEME, t),
 
+  getColorMode: (): ColorMode => loadFromStorage(STORAGE_KEYS.COLOR_MODE, 'dark'),
+  setColorMode: (m: ColorMode) => saveToStorage(STORAGE_KEYS.COLOR_MODE, m),
+
   getWallpaper: (): WallpaperType => loadFromStorage(STORAGE_KEYS.WALLPAPER, 'meadow'),
   setWallpaper: (w: WallpaperType) => saveToStorage(STORAGE_KEYS.WALLPAPER, w),
 
@@ -417,6 +435,61 @@ export const StorageManager = {
   saveAlarms: (alarms: SmartAlarm[]) => saveToStorage(STORAGE_KEYS.ALARMS, alarms),
   saveMoods: (moods: MoodLog[]) => saveToStorage(STORAGE_KEYS.MOODS, moods),
   saveProfile: (p: StudentProfile) => saveToStorage(STORAGE_KEYS.PROFILE, p),
+
+  getPlanTier: (): PlanTier => {
+    const promoApplied = loadFromStorage<boolean>(STORAGE_KEYS.PRO_FREE_PROMO_APPLIED, false);
+    const stored = loadFromStorage<PlanTier>(STORAGE_KEYS.PLAN_TIER, 'pro_ultra');
+    if (!promoApplied) {
+      saveToStorage(STORAGE_KEYS.PRO_FREE_PROMO_APPLIED, true);
+      if (stored !== 'pro_ultra') {
+        saveToStorage(STORAGE_KEYS.PLAN_TIER, 'pro_ultra');
+        return 'pro_ultra';
+      }
+    }
+    return stored;
+  },
+  setPlanTier: (tier: PlanTier) => saveToStorage(STORAGE_KEYS.PLAN_TIER, tier),
+
+  getParentContact: (): ParentContactConfig =>
+    loadFromStorage<ParentContactConfig>(STORAGE_KEYS.PARENT_CONTACT, {
+      parentName: '',
+      parentEmail: '',
+      parentWhatsapp: '',
+    }),
+  setParentContact: (cfg: ParentContactConfig) => saveToStorage(STORAGE_KEYS.PARENT_CONTACT, cfg),
+
+  getUpiReceipts: (): UpiPaymentReceipt[] =>
+    loadFromStorage<UpiPaymentReceipt[]>(STORAGE_KEYS.UPI_RECEIPTS, []),
+  setUpiReceipts: (receipts: UpiPaymentReceipt[]) => saveToStorage(STORAGE_KEYS.UPI_RECEIPTS, receipts),
+
+  getParentReports: (): ParentReportRecord[] =>
+    loadFromStorage<ParentReportRecord[]>(STORAGE_KEYS.PARENT_REPORTS, []),
+  setParentReports: (reports: ParentReportRecord[]) => saveToStorage(STORAGE_KEYS.PARENT_REPORTS, reports),
+
+  getGuestMode: (): boolean => loadFromStorage<boolean>(STORAGE_KEYS.GUEST_MODE, false),
+  setGuestMode: (isGuest: boolean) => saveToStorage(STORAGE_KEYS.GUEST_MODE, isGuest),
+
+  getUsernameMap: (): Record<string, string> =>
+    loadFromStorage<Record<string, string>>(STORAGE_KEYS.USERNAME_MAP, {}),
+  registerUsernameMapping: (username: string, email: string) => {
+    const map = loadFromStorage<Record<string, string>>(STORAGE_KEYS.USERNAME_MAP, {});
+    map[username.trim().toLowerCase()] = email.trim().toLowerCase();
+    saveToStorage(STORAGE_KEYS.USERNAME_MAP, map);
+  },
+
+  getLocalAuthSession: (): LocalAuthUser | null =>
+    loadFromStorage<LocalAuthUser | null>(STORAGE_KEYS.LOCAL_AUTH_SESSION, null),
+  setLocalAuthSession: (session: LocalAuthUser | null) => {
+    try {
+      if (!session) {
+        localStorage.removeItem(STORAGE_KEYS.LOCAL_AUTH_SESSION);
+      } else {
+        saveToStorage(STORAGE_KEYS.LOCAL_AUTH_SESSION, session);
+      }
+    } catch (e) {
+      console.warn('Error updating local auth session:', e);
+    }
+  },
 
   exportAllData: (): string => {
     const data = {
@@ -464,5 +537,6 @@ export const StorageManager = {
     StorageManager.setAlarms(INITIAL_ALARMS);
     StorageManager.setMoods(INITIAL_MOODS);
     StorageManager.setFocus(INITIAL_FOCUS);
+    StorageManager.setPlanTier('pro_ultra');
   },
 };

@@ -9,14 +9,30 @@ import {
   BookOpen,
   Calendar,
 } from 'lucide-react';
-import { StudentProfile, PlannerTask, Subject, FocusRecord } from '../types';
+import {
+  StudentProfile,
+  PlannerTask,
+  Subject,
+  FocusRecord,
+  PlanTier,
+  ParentContactConfig,
+  ParentReportRecord,
+  NavigationSection,
+} from '../types';
 import { aggregateFocusMinutesForDate } from '../utils/studyLogic';
+import { ParentReportPlugin } from '../components/ParentReportPlugin';
 
 interface ProgressViewProps {
   profile: StudentProfile;
   tasks: PlannerTask[];
   subjects: Subject[];
   focusRecords: FocusRecord[];
+  planTier: PlanTier;
+  parentContact: ParentContactConfig;
+  parentReports: ParentReportRecord[];
+  onSaveParentContact: (cfg: ParentContactConfig) => void;
+  onRecordReport: (record: ParentReportRecord) => void;
+  onNavigate: (section: NavigationSection) => void;
 }
 
 export const ProgressView: React.FC<ProgressViewProps> = ({
@@ -24,6 +40,12 @@ export const ProgressView: React.FC<ProgressViewProps> = ({
   tasks,
   subjects,
   focusRecords,
+  planTier,
+  parentContact,
+  parentReports,
+  onSaveParentContact,
+  onRecordReport,
+  onNavigate,
 }) => {
   const today = new Date().toISOString().split('T')[0];
 
@@ -210,6 +232,20 @@ export const ProgressView: React.FC<ProgressViewProps> = ({
           ))}
         </div>
       </div>
+
+      {/* Share Progress to Parent via WhatsApp & Gmail Plugin */}
+      <ParentReportPlugin
+        profile={profile}
+        tasks={tasks}
+        subjects={subjects}
+        focusRecords={focusRecords}
+        planTier={planTier}
+        parentContact={parentContact}
+        parentReports={parentReports}
+        onSaveParentContact={onSaveParentContact}
+        onRecordReport={onRecordReport}
+        onNavigate={onNavigate}
+      />
     </div>
   );
 };
